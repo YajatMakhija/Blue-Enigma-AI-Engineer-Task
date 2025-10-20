@@ -17,18 +17,10 @@ class HybridChat:
     
     def __init__(self, query: str):
         self.query = query
-        self.embedding: Optional[List[float]] = None
-        self.client = None
-        self.model = None
-        self.pc = None
-        self.index = None
-        self.driver = None
         
         # Initialize all connections
         self._initialize_clients()
         
-        # Generate embedding for the query
-        self.embedding = self._embed_query(query)
 
     def _initialize_clients(self):
         """Initialize all API clients and database connections."""
@@ -69,6 +61,8 @@ class HybridChat:
                 content=text,
                 output_dimensionality=1536
             )
+
+
             
             embedding = resp['embedding']
             logger.info(f"[hybrid_chat.py] Successfully generated embedding of dimension {len(embedding)}")
@@ -80,25 +74,13 @@ class HybridChat:
     def query_pinecone(self, top_k: int = TOP_K) -> List[Dict[str, Any]]:
         try:
             logger.info(f"[hybrid_chat.py] Querying Pinecone with top_k={top_k}")
-            prompt = """You are VietGuide — a friendly and polite AI travel assistant for Vietnam.
+            prompt = """You are part of a hybrid retrieval system with a knowledge graph (Neo4j) 
+and vector store (Pinecone) containing tourism data in JSON format.
 
-            You will be given:
+Your job is to rewrite user queries into specific, information-rich queries 
+that can retrieve relevant data from this dataset.
 
-            1. Context data retrieved from databases (Pinecone and Neo4j). It is in JSON format and may include cities, regions, attractions, travel tips, and connections.
-            2. A user query about travel in Vietnam.
-
-            Your task:
-            - Use only the information provided in the context to answer the user's query.
-            - Do not guess or invent information that is not in the context.
-            - Always combine the context and the user query when forming your answer.
-            - Keep your response polite, friendly, and concise.
-            - If the context does not have information to answer the query, respond politely:
-            "I’m sorry, I don’t have that information right now. Once the database is updated, I’ll be able to provide you with a detailed answer."
-            Then add: "Would you like to know about nearby destinations or other travel tips instead?"
-            - Never use asterisks (*) or markdown formatting.
-            - If you list items or points, use plain text and spaces or line breaks.
-
-            ### Example context (JSON):
+Context examples:
 
             {
             "id": "city_hanoi",
@@ -115,12 +97,14 @@ class HybridChat:
             ]
             }
 
-            Use the following context to answer the question step by step. 
-            Think carefully and show your reasoning before giving the final answer.
 
-            User query: {user_query}
+User query: {user_query}
 
-            Answer:
+Rewrite the query into a version that includes specific details or entities 
+(such as city names, tags, or related topics) from the dataset to help 
+retrieve the most relevant information.
+
+Output only the rewritten query.
             """
             transform_query = self.model.generate_content(prompt.replace("{user_query}", self.query))
             transformed_embeddings = self._embed_query(transform_query.text.strip())
@@ -133,11 +117,11 @@ class HybridChat:
             # Filter by similarity threshold
             relevant_matches = [
                 match for match in response.matches
-                if match.score >= SIMILARITY_THRESHOLD
+                if match.score >= 0.7
             ]
-            
-            logger.info(f"Found {len(relevant_matches)} relevant matches above threshold {SIMILARITY_THRESHOLD}")
-            
+
+            logger.info(f"Found {len(relevant_matches)} relevant matches above threshold 0.7")
+
             if not relevant_matches:
                 logger.warning("No matches found above similarity threshold")
             
